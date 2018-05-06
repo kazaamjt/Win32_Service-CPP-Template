@@ -1,11 +1,6 @@
 #include <string>
 #include <Windows.h>
 
-/*
-* TODO: make this whole thing in to a class header, but...
-* Due to the Windows-api expecting C-style callbacks, E.G. not compatible with member functions...
-* we can't easily make this in to a class...
-*/
 std::string NAME = "ExampleService";
 LPSTR WNAME = const_cast<char *>(NAME.c_str());
 
