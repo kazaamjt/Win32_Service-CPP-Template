@@ -51,8 +51,8 @@ void WINAPI service_main(DWORD argc, LPTSTR *argv)
 
 	if (SetServiceStatus(STATUSHANDLE, &STATUS) == FALSE)
 	{
-	std::string debugmsg = NAME + ": service_main: SetServiceStatus returned an error";
-	OutputDebugString(debugmsg.c_str());
+		std::string debugmsg = NAME + ": service_main: SetServiceStatus returned an error";
+		OutputDebugString(debugmsg.c_str());
 	}
 
 	/*
