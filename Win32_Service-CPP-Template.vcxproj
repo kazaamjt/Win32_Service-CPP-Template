@@ -116,6 +116,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="functional-example.cpp" />
+    <ClCompile Include="oo-example.cpp" />
+    <ClCompile Include="Win32_Service.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Win32_Service.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
