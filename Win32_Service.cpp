@@ -1,161 +1,202 @@
-#include <string>
 #include <assert.h>
 #include "Win32_Service.h"
 
-Service *Service::instance_;
+Service *Service::instance;
 
-Service::Service(const std::string &name,
-	bool canStop,
-	bool canShutdown,
-	bool canPauseContinue)
-	:name_(name), statusHandle_(NULL) {
-	// The service runs in its own process.
-	status_.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+Service::Service(std::string in_name,
+	bool in_canStop,
+	bool in_canShutdown,
+	bool in_canPauseContinue) {
 
-	// The service is starting.
-	status_.dwCurrentState = SERVICE_START_PENDING;
+	name = in_name;
+	Wname = const_cast<char *>(name.c_str());
 
-	// The accepted commands of the service.
-	status_.dwControlsAccepted = 0;
-	if (canStop)
-		status_.dwControlsAccepted |= SERVICE_ACCEPT_STOP;
-	if (canShutdown)
-		status_.dwControlsAccepted |= SERVICE_ACCEPT_SHUTDOWN;
-	if (canPauseContinue)
-		status_.dwControlsAccepted |= SERVICE_ACCEPT_PAUSE_CONTINUE;
-
-	status_.dwWin32ExitCode = NO_ERROR;
-	status_.dwServiceSpecificExitCode = 0;
-	status_.dwCheckPoint = 0;
-	status_.dwWaitHint = 0;
+	canStop = in_canStop;
+	canShutdown = in_canShutdown;
+	canPauseContinue = in_canPauseContinue;
 }
 
-Service::~Service(){}
+int Service::run() {
+	instance = this;
 
+	SERVICE_TABLE_ENTRY ServiceTable[] = {
+		{ Wname,
+		(LPSERVICE_MAIN_FUNCTION)service_main },
+		{ NULL, NULL }};
 
-void Service::run() {
-	instance_ = this;
-
-	SERVICE_TABLE_ENTRY serviceTable[] =
-	{
-		{ (LPSTR)name_.c_str(), serviceMain },
-	{ NULL, NULL }
-	};
-
-	if (!StartServiceCtrlDispatcher(serviceTable)) {
-		std::string debugmsg = name_ + ": service_main: SetServiceStatus returned an error";
-		OutputDebugString(debugmsg.c_str());
+	if (StartServiceCtrlDispatcher(ServiceTable) == FALSE) {
+		return GetLastError();
 	}
+	return 0;
 }
 
-void WINAPI Service::serviceMain(
-	__in DWORD argc,
-	__in_ecount(argc) LPSTR *argv) {
-	assert(instance_ != NULL);
+void WINAPI Service::service_main(DWORD argc, LPTSTR *argv) {
+	assert(instance != NULL);
 
-	// Register the handler function for the service
-	instance_->statusHandle_ = RegisterServiceCtrlHandler(
-		instance_->name_.c_str(), serviceCtrlHandler);
-	if (instance_->statusHandle_ == NULL)
+	// Register our controller
+	instance->statusHandle = RegisterServiceCtrlHandler(instance->Wname, service_control_handler);
+	if (instance->statusHandle == NULL)
 	{
-		std::string debugmsg = instance_->name_ + ": service_main: Failed to register service.";
+		std::string debugmsg = instance->name + ": service_main: Failed to register service.";
 		OutputDebugString(debugmsg.c_str());
 		return;
 	}
 
-	// Start the service.
-	instance_->setState(SERVICE_START_PENDING);
-	instance_->onStart(argc, argv);
+	// initialize service status and tell the windows service controller we're starting
+	SecureZeroMemory(&instance->status, sizeof(instance->status));
+	instance->status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+	instance->on_start_pending();
+
+	if (instance->stopEvent == NULL) {
+		// Tell service controller we are stopped and exit
+		instance->status.dwControlsAccepted = 0;
+		instance->on_stop_error();
+		return;
+	}
+
+	instance->on_start();
+
+	// Wait until our thread is done
+	WaitForSingleObject(instance->workerThreadHandle, INFINITE);
+
+	instance->on_stop_pending();
+	instance->on_stop();
 }
 
-void WINAPI Service::serviceCtrlHandler(DWORD ctrl) {
-	switch (ctrl)
-	{
-	case SERVICE_CONTROL_STOP:
-		if (instance_->status_.dwControlsAccepted & SERVICE_ACCEPT_STOP) {
-			instance_->setState(SERVICE_STOP_PENDING);
-			instance_->onStop();
-		}
-		break;
-	case SERVICE_CONTROL_PAUSE:
-		if (instance_->status_.dwControlsAccepted & SERVICE_ACCEPT_PAUSE_CONTINUE) {
-			instance_->setState(SERVICE_PAUSE_PENDING);
-			instance_->onPause();
-		}
-		break;
-	case SERVICE_CONTROL_CONTINUE:
-		if (instance_->status_.dwControlsAccepted & SERVICE_ACCEPT_PAUSE_CONTINUE) {
-			instance_->setState(SERVICE_CONTINUE_PENDING);
-			instance_->onContinue();
-		}
-		break;
-	case SERVICE_CONTROL_SHUTDOWN:
-		if (instance_->status_.dwControlsAccepted & SERVICE_ACCEPT_SHUTDOWN) {
-			instance_->setState(SERVICE_STOP_PENDING);
-			instance_->onShutdown();
-		}
-		break;
-	case SERVICE_CONTROL_INTERROGATE:
-		SetServiceStatus(instance_->statusHandle_, &instance_->status_);
-		break;
-	default:
-		break;
+void WINAPI Service::service_control_handler(DWORD control) {
+	switch (control) {
+		case SERVICE_CONTROL_STOP:
+			if (instance->status.dwControlsAccepted & SERVICE_ACCEPT_STOP) {
+				instance->on_control_stop();
+			}
+			break;
+		case SERVICE_CONTROL_PAUSE:
+			if (instance->status.dwControlsAccepted & SERVICE_ACCEPT_PAUSE_CONTINUE) {
+				instance->on_control_pause();
+			}
+			break;
+		case SERVICE_CONTROL_CONTINUE:
+			if (instance->status.dwControlsAccepted & SERVICE_ACCEPT_PAUSE_CONTINUE) {
+				instance->on_control_continue();
+			}
+			break;
+		case SERVICE_CONTROL_SHUTDOWN:
+			if (instance->status.dwControlsAccepted & SERVICE_ACCEPT_SHUTDOWN) {
+				instance->on_control_shutdown();
+			}
+			break;
+
+		case SERVICE_CONTROL_INTERROGATE: // Deprecated, but you never know... let's just handle it.
+			SetServiceStatus(instance->statusHandle, &instance->status);
+			break;
+
+		default:
+			break;
 	}
 }
 
-void Service::setState(DWORD state) {
-	setStateL(state);
+void Service::on_control_stop() {
+	if (status.dwCurrentState != SERVICE_RUNNING)
+		return;
+	
+	SetEvent(stopEvent);
 }
 
-void Service::setStateL(DWORD state) {
-	status_.dwCurrentState = state;
-	status_.dwCheckPoint = 0;
-	status_.dwWaitHint = 0;
-	SetServiceStatus(statusHandle_, &status_);
+void Service::on_control_pause() {
+	if (status.dwCurrentState != SERVICE_RUNNING)
+		return;
 }
 
-void Service::setStateStopped(DWORD exitCode) {
-	status_.dwWin32ExitCode = exitCode;
-	setStateL(SERVICE_STOPPED);
+void Service::on_control_continue() {
+	if (status.dwCurrentState != SERVICE_PAUSED)
+		return;
 }
 
+void Service::on_control_shutdown() {
+	on_control_stop();
+}
 
-void Service::setStateStoppedSpecific(DWORD exitCode) {
-	status_.dwWin32ExitCode = ERROR_SERVICE_SPECIFIC_ERROR;
-	status_.dwServiceSpecificExitCode = exitCode;
-	setStateL(SERVICE_STOPPED);
+void Service::on_start_pending() {
+	set_state(SERVICE_START_PENDING);
+	stopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	status.dwWin32ExitCode = NO_ERROR;
+	status.dwServiceSpecificExitCode = 0;
+
+	status.dwControlsAccepted = 0;
+	if (canStop)
+		status.dwControlsAccepted |= SERVICE_ACCEPT_STOP;
+	if (canShutdown)
+		status.dwControlsAccepted |= SERVICE_ACCEPT_SHUTDOWN;
+	if (canPauseContinue)
+		status.dwControlsAccepted |= SERVICE_ACCEPT_PAUSE_CONTINUE;
+}
+
+void Service::on_start() {
+	service_init();
+	workerThreadHandle = CreateThread(NULL, 0, &worker_thread, (LPVOID)this, 0, NULL);
+	set_state(SERVICE_RUNNING);
+}
+
+void Service::on_pause() {
+	set_state(SERVICE_PAUSED);
+}
+
+void Service::on_continue() {
+	set_state(SERVICE_RUNNING);
+}
+
+void Service::on_stop_pending() {
+	set_state(SERVICE_STOP_PENDING);
+	service_cleanUp();
+	CloseHandle(stopEvent);
+}
+
+void Service::on_stop() {
+	set_stateStopped(NO_ERROR);
+}
+
+void Service::on_stop_error() {
+	status.dwCurrentState = SERVICE_STOPPED;
+	status.dwWin32ExitCode = GetLastError();
+	status.dwCheckPoint = 1;
+}
+
+void Service::on_stop_pending() {
+	SetEvent(stopEvent);
+}
+
+void Service::set_state(DWORD state) {
+	set_stateL(state);
+}
+
+void Service::set_stateL(DWORD state) {
+	status.dwCurrentState = state;
+	status.dwCheckPoint = 0;
+	status.dwWaitHint = 0;
+	SetServiceStatus(statusHandle, &status);
+	if (SetServiceStatus(statusHandle, &status) == FALSE)
+	{
+		std::string debugmsg = name + ": service_main: SetServiceStatus returned an error";
+		OutputDebugString(debugmsg.c_str());
+	}
+}
+
+void Service::set_stateStopped(DWORD exitCode) {
+	status.dwWin32ExitCode = exitCode;
+	set_stateL(SERVICE_STOPPED);
+}
+
+void Service::set_stateStoppedSpecific(DWORD exitCode) {
+	status.dwWin32ExitCode = ERROR_SERVICE_SPECIFIC_ERROR;
+	status.dwServiceSpecificExitCode = exitCode;
+	set_stateL(SERVICE_STOPPED);
 }
 
 void Service::bump() {
-	++status_.dwCheckPoint;
-	::SetServiceStatus(statusHandle_, &status_);
+	++status.dwCheckPoint;
+	::SetServiceStatus(statusHandle, &status);
 }
 
-void Service::hintTime(DWORD msec) {
-	++status_.dwCheckPoint;
-	status_.dwWaitHint = msec;
-	::SetServiceStatus(statusHandle_, &status_);
-	status_.dwWaitHint = 0; // won't apply after the next update
-}
-
-void Service::onStart(
-	__in DWORD argc,
-	__in_ecount(argc) LPSTR *argv) {
-	setState(SERVICE_RUNNING);
-}
-
-void Service::onStop() {
-	setStateStopped(NO_ERROR);
-}
-
-void Service::onPause() {
-	setState(SERVICE_PAUSED);
-}
-
-void Service::onContinue() {
-	setState(SERVICE_RUNNING);
-}
-
-void Service::onShutdown() {
-	onStop();
+DWORD WINAPI Service::worker_thread(LPVOID lpParam) {
+	instance->worker_thread_function(lpParam);
 }

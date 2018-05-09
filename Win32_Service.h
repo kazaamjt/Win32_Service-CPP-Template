@@ -3,75 +3,67 @@
 #include <Windows.h>
 
 /*
- * The general wrapper for running as a service.
- * The subclasses need to define their virtual methods.
+ * Just subclass this class really...
  */
 
-class __declspec(dllexport) Service{
-	public:
-		// Because of how service work, you can only have 1 service object in your process.
-		Service(const std::string &name,
-			bool canStop,
-			bool canShutdown,
-			bool canPauseContinue);
-
-			virtual ~Service();
-			// Starts the run, return on stop.
-			void run();
-
-			// Don't use it for SERVICE_STOPPED.
-			void setState(DWORD state);
-			// Convenient
-			void setStateRunning()
-			{
-				setState(SERVICE_RUNNING);
-			}
-			void setStatePaused()
-			{
-				setState(SERVICE_PAUSED);
-			}
-
-			// Setting to SERVICE_STOPPED is a lot more complicated
-			void setStateStopped(DWORD exitCode);
-			void setStateStoppedSpecific(DWORD exitCode);
-			
-			// On the lengthy operations, periodically call this to tell the
-			// controller that the service is not dead.
-			void bump();
-
-			// Can be used to set the expected length of long operations. Invokes bump.
-			void hintTime(DWORD msec);
-
-			// Overwrite these in the subclass.
-			virtual void onStart(
-				__in DWORD argc,
-				__in_ecount(argc) LPSTR *argv);
-			virtual void onStop(); // sets the success exit code
-			virtual void onPause();
-			virtual void onContinue();
-			virtual void onShutdown(); // calls onStop()
-
-	protected:
-		// The callback for the service start.
-		static void WINAPI serviceMain(
-			__in DWORD argc,
-			__in_ecount(argc) LPSTR *argv);
-		// The callback for the requests.
-		static void WINAPI serviceCtrlHandler(DWORD ctrl);
-
-		// the internal version.
-		void setStateL(DWORD state);
-
-	protected:
-		static Service *instance_;
-
-		std::string name_;
-		
-		SERVICE_STATUS_HANDLE statusHandle_; // Handle used to report the status.
-		SERVICE_STATUS status_; // Current status
-
+ // Meant for running an exe as a service on windows platforms.
+class Service {
 	private:
-		Service();
-		Service(const Service &);
-		void operator=(const Service &);
+		std::string name;
+		LPSTR Wname;
+		bool canStop;
+		bool canShutdown;
+		bool canPauseContinue;
+
+		SERVICE_STATUS_HANDLE statusHandle;
+		SERVICE_STATUS status;
+		HANDLE stopEvent;
+		HANDLE pauseEvent;
+		HANDLE continueEvent;
+		HANDLE workerThreadHandle;
+
+		static void WINAPI service_main(DWORD argc, LPTSTR *argv);
+		static void WINAPI service_control_handler(DWORD control);
+		static DWORD WINAPI worker_thread(LPVOID lpParam);
+
+		// Convenience
+		void set_stateL(DWORD state);
+		void set_stateStopped(DWORD exitCode);
+		void set_stateStoppedSpecific(DWORD exitCode);
+		void set_stateRunning() {
+			set_state(SERVICE_RUNNING);
+		}
+
+		void set_statePaused() {
+			set_state(SERVICE_PAUSED);
+		}
+
+		void on_control_stop();
+		void on_control_pause();
+		void on_control_continue();
+		void on_control_shutdown();
+
+		void on_start_pending();
+		void on_start();
+		void on_pause();
+		void on_continue();
+		void on_stop_pending();
+		void on_stop();
+		void on_stop_error();
+
+	protected:
+		static Service *instance;
+		virtual DWORD WINAPI worker_thread_function(LPVOID lpParam);
+		virtual void service_init();
+		virtual void service_cleanUp();
+
+	public:
+		Service(std::string name,
+			bool in_canStop,
+			bool in_canShutdown,
+			bool in_canPauseContinue);
+		
+		int run();
+		void set_state(DWORD state);
+		void bump(); // increments status.dwCheckPoint, see:https://msdn.microsoft.com/en-us/library/windows/desktop/ms685996%28v=vs.85%29.aspx?f=255&MSPPError=-2147217396
 };
