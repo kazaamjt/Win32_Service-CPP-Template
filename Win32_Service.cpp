@@ -2,12 +2,9 @@
 
 WindowsService *WindowsService::instance;
 
-WindowsService::WindowsService(std::string _name, bool _canStop, bool _canShutdown, bool _canPauseContinue) {
+WindowsService::WindowsService(std::string _name, bool _canPauseContinue) {
 	name = _name;
 	Wname = const_cast<char*>(name.c_str());
-
-	bool canStop = _canStop;
-	bool canShutdown = _canShutdown;
 	bool canPauseContinue = _canPauseContinue;
 
 	status = { 0 };
@@ -57,6 +54,11 @@ void WINAPI WindowsService::control_handler(DWORD CtrlCode)
 {
 	switch (CtrlCode) {
 	case SERVICE_CONTROL_STOP:
+		if (instance->status.dwCurrentState == SERVICE_PAUSED) {
+			instance->control_stopOnPause();
+			break;
+		} 
+
 		if (instance->status.dwCurrentState != SERVICE_RUNNING) { break; }
 		instance->control_stop();
 		break;
@@ -92,7 +94,7 @@ DWORD WINAPI WindowsService::worker_thread(LPVOID lpParam) {
 void WindowsService::startup() {
 	ZeroMemory(&status, sizeof(status));
 	status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
-	status.dwControlsAccepted = 0;
+	set_acceptedControls(false);
 	status.dwServiceSpecificExitCode = 0;
 	set_state(SERVICE_START_PENDING);
 
@@ -107,16 +109,7 @@ void WindowsService::startup() {
 		return;
 	}
 
-	status.dwControlsAccepted = 0;
-	if (canStop) {
-		status.dwControlsAccepted |= SERVICE_ACCEPT_STOP;
-	}
-	if (canShutdown) {
-		status.dwControlsAccepted |= SERVICE_ACCEPT_SHUTDOWN;
-	}
-	if (canPauseContinue) {
-		status.dwControlsAccepted |= SERVICE_ACCEPT_PAUSE_CONTINUE;
-	}
+	set_acceptedControls(true);
 
 	set_state(SERVICE_RUNNING);
 }
@@ -126,11 +119,13 @@ void WindowsService::exit() {
 	CloseHandle(stopEvent);
 	CloseHandle(pauseEvent);
 	CloseHandle(continueEvent);
+	CloseHandle(workerPaused);
+	CloseHandle(workerContinued);
 	set_state(SERVICE_STOPPED);
 }
 
 void WindowsService::on_error() {
-	status.dwControlsAccepted = 0;
+	set_acceptedControls(false);
 	status.dwCurrentState = SERVICE_STOPPED;
 	status.dwWin32ExitCode = GetLastError();
 	status.dwCheckPoint = 0;
@@ -144,7 +139,7 @@ void WindowsService::on_error() {
 
 void WindowsService::control_stop() {
 	on_stop();
-	status.dwControlsAccepted = 0;
+	set_acceptedControls(false);
 	set_state(SERVICE_STOP_PENDING);
 	SetEvent(stopEvent);
 }
@@ -153,18 +148,24 @@ void WindowsService::control_pause() {
 	set_state(SERVICE_PAUSE_PENDING);
 	on_pause();
 	SetEvent(pauseEvent);
+	WaitForSingleObject(workerPaused, INFINITE);
+	set_state(SERVICE_PAUSED);
 }
 
 void WindowsService::control_continue() {
 	set_state(SERVICE_CONTINUE_PENDING);
+	set_acceptedControls(false);
 	ResetEvent(pauseEvent);
 	on_continue();
 	SetEvent(continueEvent);
+	WaitForSingleObject(workerContinued, INFINITE);
+	set_acceptedControls(true);
 	ResetEvent(continueEvent);
+	set_state(SERVICE_RUNNING);
 }
 
 void WindowsService::control_stopOnPause() {
-	status.dwControlsAccepted = 0;
+	set_acceptedControls(false);
 	set_state(SERVICE_STOP_PENDING);
 	on_continue();
 	SetEvent(stopEvent);
@@ -180,6 +181,23 @@ void WindowsService::set_state(DWORD state) {
 	if (SetServiceStatus(statusHandle, &status) == FALSE)
 	{
 		std::string debugmsg = name + ": service_main: SetServiceStatus returned an error";
+		OutputDebugString(debugmsg.c_str());
+	}
+}
+
+void WindowsService::set_acceptedControls(bool _in) {
+	if (_in) {
+		status.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+		if (canPauseContinue) {
+			status.dwControlsAccepted |= SERVICE_ACCEPT_PAUSE_CONTINUE;
+		}
+	} else {
+		status.dwControlsAccepted = 0;
+	}
+
+	if (SetServiceStatus(statusHandle, &status) == FALSE)
+	{
+		std::string debugmsg = name + ": service_main: SetServiceStatus change accepted controls operation failed";
 		OutputDebugString(debugmsg.c_str());
 	}
 }

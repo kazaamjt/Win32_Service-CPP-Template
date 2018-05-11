@@ -115,15 +115,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="functional-example.cpp" />
-    <ClCompile Include="oo-example.cpp" />
-    <ClCompile Include="OO-test.cpp" />
+    <ClCompile Include="example.cpp" />
     <ClCompile Include="Win32_Service.cpp" />
-    <ClCompile Include="WindowsService.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Win32_Service.h" />
-    <ClInclude Include="WindowsService.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

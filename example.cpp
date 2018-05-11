@@ -1,4 +1,4 @@
-#include "WindowsService.h"
+#include "Win32_Service.h"
 
 class Service : public WindowsService {
 	using WindowsService::WindowsService;
@@ -20,10 +20,10 @@ protected:
 
 			}
 			else {
-				set_state(SERVICE_PAUSED);
+				confirm_pause();
 				// Wait for continue to be thrown
 				WaitForSingleObject(continueEvent, INFINITE);
-				set_state(SERVICE_RUNNING);
+				confirm_continue();
 			}
 		}
 
@@ -67,6 +67,6 @@ protected:
 };
 
 int main(int argc, TCHAR *argv[]) {
-	Service test("test", true, true, true);
+	Service test("test", true);
 	test.run(argc, argv);
 }
