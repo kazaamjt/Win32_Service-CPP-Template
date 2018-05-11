@@ -116,7 +116,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="example.cpp" />
-    <ClCompile Include="Win32_Service.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Win32_Service.h" />
