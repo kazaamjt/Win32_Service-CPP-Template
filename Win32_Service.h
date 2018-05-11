@@ -2,68 +2,53 @@
 #include <string>
 #include <Windows.h>
 
-/*
- * Just subclass this class really...
- */
+class WindowsService {
+private:
+	std::string name;
+	LPSTR Wname;
+	bool canStop;
+	bool canShutdown;
+	bool canPauseContinue;
 
- // Meant for running an exe as a service on windows platforms.
-class Service {
-	private:
-		std::string name;
-		LPSTR Wname;
-		bool canStop;
-		bool canShutdown;
-		bool canPauseContinue;
+	SERVICE_STATUS status;
+	SERVICE_STATUS_HANDLE statusHandle;
 
-		SERVICE_STATUS_HANDLE statusHandle;
-		SERVICE_STATUS status;
-		HANDLE stopEvent;
-		HANDLE pauseEvent;
-		HANDLE continueEvent;
-		HANDLE workerThreadHandle;
+	static void WINAPI service_main(DWORD argc, LPTSTR *argv);
+	static void WINAPI control_handler(DWORD);
+	static DWORD WINAPI worker_thread(LPVOID lpParam);
 
-		static void WINAPI service_main(DWORD argc, LPTSTR *argv);
-		static void WINAPI service_control_handler(DWORD control);
-		static DWORD WINAPI worker_thread(LPVOID lpParam);
+	// Internal start/stop functions
+	void startup();
+	void exit();
+	void on_error();
 
-		// Convenience
-		void set_stateL(DWORD state);
-		void set_stateStopped(DWORD exitCode);
-		void set_stateStoppedSpecific(DWORD exitCode);
-		void set_stateRunning() {
-			set_state(SERVICE_RUNNING);
-		}
+	// Service controller invoked start/stop functions
+	void control_stop();
+	void control_pause();
+	void control_continue();
+	void control_stopOnPause();
 
-		void set_statePaused() {
-			set_state(SERVICE_PAUSED);
-		}
+protected:
+	HANDLE stopEvent;
+	HANDLE pauseEvent;
+	HANDLE continueEvent;
 
-		void on_control_stop();
-		void on_control_pause();
-		void on_control_continue();
-		void on_control_shutdown();
+	void set_state(DWORD state);
+	static WindowsService *instance;
+	virtual DWORD WINAPI worker(LPVOID lpParam) { return ERROR_SUCCESS; }
 
-		void on_start_pending();
-		void on_start();
-		void on_pause();
-		void on_continue();
-		void on_stop_pending();
-		void on_stop();
-		void on_stop_error();
+	// Functions that get called on specific events
+	virtual void on_startup() {};
+	virtual void on_pause() {};
+	virtual void on_continue() {};
+	virtual void on_stop() {};
+	virtual void on_exit() {};
 
-	protected:
-		static Service *instance;
-		virtual DWORD WINAPI worker_thread_function(LPVOID lpParam);
-		virtual void service_init();
-		virtual void service_cleanUp();
+	// Tell the service controller we're still alive during lenghty pending operations. EG STOP_PENDING. Not for during bump.
+	void bump();
 
-	public:
-		Service(std::string name,
-			bool in_canStop,
-			bool in_canShutdown,
-			bool in_canPauseContinue);
-		
-		int run();
-		void set_state(DWORD state);
-		void bump(); // increments status.dwCheckPoint, see:https://msdn.microsoft.com/en-us/library/windows/desktop/ms685996%28v=vs.85%29.aspx?f=255&MSPPError=-2147217396
+public:
+	WindowsService(std::string _name, bool _canStop, bool _canShutdown, bool _canPauseContinue);
+	int run(int argc, TCHAR *argv[]);
+
 };
