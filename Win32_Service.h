@@ -32,6 +32,8 @@ private:
 	void control_continue();
 	void control_stopOnPause();
 
+	void test_startStop();
+
 protected:
 	HANDLE stopEvent;
 	HANDLE pauseEvent;

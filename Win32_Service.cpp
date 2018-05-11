@@ -1,3 +1,4 @@
+#include <iostream>
 #include "Win32_Service.h"
 
 WindowsService *WindowsService::instance;
@@ -25,7 +26,12 @@ int WindowsService::run(int argc, TCHAR *argv[]) {
 	};
 
 	if (StartServiceCtrlDispatcher(serviceTable) == FALSE) {
-		return GetLastError();
+		DWORD serviceDispatchError = GetLastError();
+		if (serviceDispatchError == ERROR_FAILED_SERVICE_CONTROLLER_CONNECT) {
+			test_startStop();
+		} else {
+			return serviceDispatchError;
+		}
 	}
 
 	return 0;
@@ -138,9 +144,9 @@ void WindowsService::on_error() {
 }
 
 void WindowsService::control_stop() {
+	set_state(SERVICE_STOP_PENDING);
 	on_stop();
 	set_acceptedControls(false);
-	set_state(SERVICE_STOP_PENDING);
 	SetEvent(stopEvent);
 }
 
@@ -209,4 +215,24 @@ void WindowsService::bump() {
 		std::string debugmsg = name + ": service_main: SetServiceStatus dwCheckPoint operation failed";
 		OutputDebugString(debugmsg.c_str());
 	}
+}
+
+void WindowsService::test_startStop() {
+	std::cout << "START_PENDING" << std::endl;
+	on_startup();
+
+	stopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	pauseEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	continueEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	HANDLE hThread = CreateThread(NULL, 0, worker_thread, NULL, 0, NULL);
+	std::cout << "RUNNING\n" << std::endl;
+	
+	std::cout << "Press enter to simulate SCM stop event...";
+	std::cin.ignore();
+
+	std::cout << "\nSTOP_PENDING" << std::endl;
+	on_stop();
+	SetEvent(stopEvent);
+	WaitForSingleObject(hThread, INFINITE);
+	std::cout << "STOPPED" << std::endl;
 }
