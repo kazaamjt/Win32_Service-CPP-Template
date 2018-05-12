@@ -33,8 +33,6 @@ private:
 	void control_continue();
 	void control_stopOnPause();
 
-	void test_startStop();
-
 protected:
 	HANDLE stopEvent;
 	HANDLE pauseEvent;
@@ -54,11 +52,15 @@ protected:
 	virtual void on_stop() {};
 	virtual void on_exit() {};
 
+	// Run this when we fail to register with the Windows Service Manager
+	virtual void on_failedRegistration() { test_startStop(); }
+
 	// Tell the service controller we're still alive during lenghty pending operations. EG STOP_PENDING. Not for during bump.
 	void bump();
 
 public:
 	WindowsService(std::string _name, bool _canPauseContinue);
+	void test_startStop();
 	int run();
 
 };
@@ -90,7 +92,7 @@ int WindowsService::run() {
 	if (StartServiceCtrlDispatcher(serviceTable) == FALSE) {
 		DWORD serviceDispatchError = GetLastError();
 		if (serviceDispatchError == ERROR_FAILED_SERVICE_CONTROLLER_CONNECT) {
-			test_startStop();
+			on_failedRegistration();
 		}
 		else {
 			return serviceDispatchError;
