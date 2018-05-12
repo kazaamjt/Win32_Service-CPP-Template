@@ -59,7 +59,7 @@ protected:
 
 public:
 	WindowsService(std::string _name, bool _canPauseContinue);
-	int run(int argc, TCHAR *argv[]);
+	int run();
 
 };
 
@@ -78,7 +78,7 @@ WindowsService::WindowsService(std::string _name, bool _canPauseContinue) {
 	continueEvent = INVALID_HANDLE_VALUE;
 }
 
-int WindowsService::run(int argc, TCHAR *argv[]) {
+int WindowsService::run() {
 	instance = this;
 
 	SERVICE_TABLE_ENTRY serviceTable[] =

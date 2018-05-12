@@ -68,5 +68,5 @@ protected:
 
 int main(int argc, TCHAR *argv[]) {
 	Service test("test", true);
-	test.run(argc, argv);
+	return test.run();
 }
