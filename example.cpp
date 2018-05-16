@@ -4,7 +4,7 @@ class Service : public WindowsService {
 	using WindowsService::WindowsService;
 
 protected:
-	virtual DWORD WINAPI worker(LPVOID lpParam) {
+	virtual DWORD WINAPI worker(LPVOID) {
 		//  Periodically check if the service has been requested to stop
 		while (WaitForSingleObject(stopEvent, 0) != WAIT_OBJECT_0) {
 
@@ -75,7 +75,7 @@ protected:
 	}
 };
 
-int main(int argc, TCHAR *argv[]) {
+int main(int, TCHAR) {
 	Service test("test", true);
 	return test.run();
 }

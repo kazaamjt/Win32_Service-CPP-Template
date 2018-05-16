@@ -40,7 +40,7 @@ protected:
 
 	void set_state(DWORD state);
 	static WindowsService *instance;
-	virtual DWORD WINAPI worker(LPVOID lpParam) { return ERROR_SUCCESS; }
+	virtual DWORD WINAPI worker(LPVOID) { return ERROR_SUCCESS; }
 
 	void confirm_pause() {SetEvent(workerPaused);}
 	void confirm_continue() {SetEvent(workerContinued);}
