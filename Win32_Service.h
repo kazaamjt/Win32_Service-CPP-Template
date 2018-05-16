@@ -15,7 +15,7 @@ private:
 	HANDLE workerPaused;
 	HANDLE workerContinued;
 
-	static void WINAPI service_main(DWORD argc, LPTSTR *argv);
+	static void WINAPI service_main();
 	static void WINAPI control_handler(DWORD);
 	static DWORD WINAPI worker_thread(LPVOID lpParam);
 
@@ -70,7 +70,7 @@ WindowsService *WindowsService::instance;
 WindowsService::WindowsService(std::string _name, bool _canPauseContinue) {
 	name = _name;
 	Wname = const_cast<char*>(name.c_str());
-	bool canPauseContinue = _canPauseContinue;
+	canPauseContinue = _canPauseContinue;
 
 	status = { 0 };
 	statusHandle = NULL;
@@ -102,7 +102,7 @@ int WindowsService::run() {
 	return 0;
 }
 
-void WINAPI WindowsService::service_main(DWORD argc, LPTSTR *argv) {
+void WINAPI WindowsService::service_main() {
 	// Register our service control handler with the SCM
 	instance->statusHandle = RegisterServiceCtrlHandler(instance->Wname, instance->control_handler);
 
