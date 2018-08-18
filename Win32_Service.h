@@ -67,10 +67,9 @@ public:
 
 WindowsService *WindowsService::instance;
 
-WindowsService::WindowsService(std::string _name, bool _canPauseContinue) {
-	name = _name;
+WindowsService::WindowsService(std::string _name, bool _canPauseContinue):
+	name(_name), canPauseContinue(_canPauseContinue) {
 	Wname = const_cast<char*>(name.c_str());
-	canPauseContinue = _canPauseContinue;
 
 	status = { 0 };
 	statusHandle = NULL;
